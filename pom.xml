@@ -46,6 +46,7 @@
 		<module>memory/repository/spring-ai-model-chat-memory-repository-jdbc</module>
 		<module>memory/repository/spring-ai-model-chat-memory-repository-mongodb</module>
 		<module>memory/repository/spring-ai-model-chat-memory-repository-neo4j</module>
+		<module>memory/repository/spring-ai-model-chat-memory-repository-redis</module>
 
 
 
@@ -94,6 +95,7 @@
 		<module>auto-configurations/models/chat/memory/repository/spring-ai-autoconfigure-model-chat-memory-repository-jdbc</module>
 		<module>auto-configurations/models/chat/memory/repository/spring-ai-autoconfigure-model-chat-memory-repository-mongodb</module>
 		<module>auto-configurations/models/chat/memory/repository/spring-ai-autoconfigure-model-chat-memory-repository-neo4j</module>
+		<module>auto-configurations/models/chat/memory/spring-ai-autoconfigure-model-chat-memory-redis</module>
 
 		<module>auto-configurations/models/chat/observation/spring-ai-autoconfigure-model-chat-observation</module>
 
@@ -220,6 +222,7 @@
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-model-chat-memory-repository-jdbc</module>
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-model-chat-memory-repository-mongodb</module>
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-model-chat-memory-repository-neo4j</module>
+		<module>spring-ai-spring-boot-starters/spring-ai-starter-model-chat-memory-repository-redis</module>
 
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-mcp-client</module>
 		<module>spring-ai-spring-boot-starters/spring-ai-starter-mcp-server</module>
@@ -274,7 +277,6 @@
 		<maven.compiler.source>${java.version}</maven.compiler.source>
 		<maven.compiler.target>${java.version}</maven.compiler.target>
 		<kotlin.compiler.jvmTarget>${java.version}</kotlin.compiler.jvmTarget>
-		<kotlin.compiler.version>2.2.21</kotlin.compiler.version>
 
 		<!-- production dependencies -->
 		<spring-boot.version>4.0.0</spring-boot.version>
@@ -293,7 +295,7 @@
 		<onnxruntime.version>1.19.2</onnxruntime.version>
 		<oci-sdk-version>3.63.1</oci-sdk-version>
 		<com.google.cloud.version>26.72.0</com.google.cloud.version>
-		<com.google.genai.version>1.28.0</com.google.genai.version>
+		<com.google.genai.version>1.30.0</com.google.genai.version>
 		<ibm.sdk.version>9.20.0</ibm.sdk.version>
 		<jsonschema.version>4.38.0</jsonschema.version>
 		<swagger-annotations.version>2.2.38</swagger-annotations.version>
@@ -339,10 +341,10 @@
 		<okhttp3.version>4.12.0</okhttp3.version>
 		<rest-assured-bom.version>5.5.6</rest-assured-bom.version>
 		<json-unit-assertj.version>4.1.0</json-unit-assertj.version>
-		
+
 		<!-- MCP-->
-		<mcp.sdk.version>0.18.0-SNAPSHOT</mcp.sdk.version>
-		<mcp-annotations.version>0.9.0-SNAPSHOT</mcp-annotations.version>
+		<mcp.sdk.version>0.17.0</mcp.sdk.version>
+		<mcp-annotations.version>0.8.0</mcp-annotations.version>
 
 		<!-- plugin versions -->
 		<antlr.version>4.13.1</antlr.version>
@@ -350,7 +352,7 @@
 		<maven-enforcer-plugin.version>3.6.2</maven-enforcer-plugin.version>
 		<!-- The version (range) of the JDK we want to use to compile.
 			This is different from ${java.version} which we use as -release target. -->
-		<compiler.jdk.version>[25,)</compiler.jdk.version>
+		<compiler.jdk.version>[21.0.8,)</compiler.jdk.version>
 		<maven-surefire-plugin.version>3.1.2</maven-surefire-plugin.version>
 		<maven-failsafe-plugin.version>3.5.2</maven-failsafe-plugin.version>
 		<maven-javadoc-plugin.version>3.5.0</maven-javadoc-plugin.version>
@@ -421,10 +423,12 @@
 			<plugin>
 				<groupId>org.jetbrains.kotlin</groupId>
 				<artifactId>kotlin-maven-plugin</artifactId>
-				<version>${kotlin.compiler.version}</version>
+				<version>${kotlin.version}</version>
 				<configuration>
 					<jvmTarget>${java.version}</jvmTarget>
 					<javaParameters>true</javaParameters>
+					<apiVersion>2.2</apiVersion>
+					<languageVersion>2.2</languageVersion>
 				</configuration>
 				<executions>
 					<execution>
@@ -461,9 +465,6 @@
 					<release>${java.version}</release>
 					<compilerArgs>
 						<arg>-parameters</arg>
-						<arg>-XDcompilePolicy=simple</arg>
-						<arg>--should-stop=ifError=FLOW</arg>
-						<arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:OnlyNullMarked -XepOpt:NullAway:JSpecifyMode=true</arg>
 					</compilerArgs>
 					<annotationProcessorPaths>
 						<path>
@@ -495,6 +496,15 @@
 						<goals>
 							<goal>compile</goal>
 						</goals>
+						<configuration>
+							<compilerArgs>
+								<arg>-XDcompilePolicy=simple</arg>
+								<!-- The following arg won't be necessary with JDK25+ -->
+								<arg>-XDaddTypeAnnotationsToSymbol=true</arg>
+								<arg>--should-stop=ifError=FLOW</arg>
+								<arg>-Xplugin:ErrorProne -XepDisableAllChecks -Xep:NullAway:ERROR -XepOpt:NullAway:OnlyNullMarked -XepOpt:NullAway:JSpecifyMode=true</arg>
+							</compilerArgs>
+						</configuration>
 					</execution>
 					<execution>
 						<id>java-test-compile</id>
@@ -671,11 +681,11 @@
 
 		</profile>
 		<profile>
-			<!-- Moving this plugin in an always active profile that appears *after* the
-			conditional javaformat -->
 			<id>checkstyle-check</id>
 			<activation>
-				<activeByDefault>true</activeByDefault>
+				<property>
+					<name>!env.BOGUS</name>
+				</property>
 			</activation>
 			<build>
 				<plugins>
@@ -698,7 +708,7 @@
 						<executions>
 							<execution>
 								<id>checkstyle-validation</id>
-								<phase>verify</phase>
+								<phase>process-sources</phase>
 								<inherited>true</inherited>
 								<configuration>
 									<skip>${disable.checks}</skip>
